@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Glow Tide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;1,9..144,340;1,9..144,480&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --void: #05060b;
+    --void-2: #0c1120;
+    --tide: #35e7c9;
+    --ember: #ff6a4d;
+    --aurora: #9b8cff;
+    --mist: #d8ece9;
+    --mist-dim: rgba(216,236,233,0.52);
+    --hair: rgba(216,236,233,0.14);
+  }
+  *{ box-sizing:border-box; }
+  html,body{
+    margin:0; padding:0; width:100%; height:100%;
+    background:var(--void); color:var(--mist);
+    overflow:hidden; overscroll-behavior:none;
+    touch-action:none; -webkit-user-select:none; user-select:none;
+    font-family:'IBM Plex Mono', ui-monospace, monospace;
+  }
+  canvas{ position:fixed; inset:0; display:block; touch-action:none; }
+
+  .vignette{
+    position:fixed; inset:0; pointer-events:none;
+    background: radial-gradient(120% 90% at 50% 45%, transparent 45%, rgba(5,6,11,0.75) 100%);
+  }
+
+  .veil{
+    position:fixed; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center;
+    gap:.9em; padding:0 1.5em;
+    background: radial-gradient(80% 60% at 50% 42%, rgba(12,17,32,0.55), rgba(5,6,11,0.86) 70%);
+    transition: opacity 900ms ease, visibility 900ms ease;
+  }
+  .veil.hidden{ opacity:0; visibility:hidden; pointer-events:none; }
+  .eyebrow{
+    margin:0; font-size:.72rem; letter-spacing:.28em; text-transform:uppercase;
+    color:var(--mist-dim); font-weight:500;
+  }
+  .title{
+    margin:0; font-family:'Fraunces', Georgia, serif; font-style:italic; font-weight:340;
+    font-size:clamp(2.6rem, 9vw, 5.2rem); line-height:1;
+    background:linear-gradient(100deg, var(--tide) 0%, var(--mist) 45%, var(--aurora) 100%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    text-wrap:balance;
+  }
+  .hint{
+    margin:0; font-size:.8rem; letter-spacing:.04em; color:var(--mist-dim);
+    max-width:26em;
+  }
+
+  .tray{
+    position:fixed; left:50%; bottom:max(1.4em, env(safe-area-inset-bottom));
+    transform:translateX(-50%);
+    display:flex; gap:.4em; padding:.4em;
+    background:rgba(12,17,32,0.55); backdrop-filter:blur(18px) saturate(140%);
+    -webkit-backdrop-filter:blur(18px) saturate(140%);
+    border:1px solid var(--hair); border-radius:999px;
+    z-index:5;
+  }
+  .tray-btn{
+    appearance:none; border:none; cursor:pointer;
+    background:transparent; color:var(--mist-dim);
+    font-family:'IBM Plex Mono', monospace; font-size:.68rem; font-weight:500;
+    letter-spacing:.12em; text-transform:uppercase;
+    padding:.65em 1em; border-radius:999px;
+    transition: background 180ms ease, color 180ms ease;
+    white-space:nowrap;
+  }
+  .tray-btn:hover{ background:rgba(216,236,233,0.08); color:var(--mist); }
+  .tray-btn:focus-visible{ outline:2px solid var(--tide); outline-offset:2px; color:var(--mist); }
+  .tray-btn[data-active="true"]{ color:var(--tide); }
+
+  @media (prefers-reduced-motion: reduce){
+    .veil{ transition:none; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="c" aria-hidden="true"></canvas>
+<div class="vignette"></div>
+
+<div class="veil" id="veil">
+  <p class="eyebrow">an instrument for the dark water</p>
+  <h1 class="title">Glow&nbsp;Tide</h1>
+  <p class="hint">Touch the screen — each finger wakes a current of light and a note of its own. Hold, drag, and let go with more than one hand.</p>
+</div>
+
+<div class="tray">
+  <button class="tray-btn" id="soundBtn" data-active="true" type="button">Sound · On</button>
+  <button class="tray-btn" id="paletteBtn" type="button">Tide</button>
+  <button class="tray-btn" id="clearBtn" type="button">Clear</button>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ---------- canvas setup ----------
+  var canvas = document.getElementById('c');
+  var ctx = canvas.getContext('2d', { alpha:false });
+  var W = 0, H = 0, DPR = 1;
+
+  function resize(){
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    buildStars();
+  }
+  window.addEventListener('resize', resize);
+
+  // ---------- palettes ----------
+  var PALETTES = {
+    Tide:   ['#35e7c9', '#5be0ff', '#8ff2d8'],
+    Ember:  ['#ff6a4d', '#ffb15e', '#ff8f6b'],
+    Aurora: ['#9b8cff', '#c58bff', '#7fa8ff']
+  };
+  var paletteNames = Object.keys(PALETTES);
+  var paletteIndex = 0;
+  function currentPalette(){ return PALETTES[paletteNames[paletteIndex]]; }
+
+  // ---------- stars ----------
+  var stars = [];
+  function buildStars(){
+    var count = Math.round((W * H) / 9000);
+    stars = [];
+    for (var i = 0; i < count; i++){
+      stars.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        r: Math.random() * 1.1 + 0.2,
+        phase: Math.random() * Math.PI * 2,
+        speed: 0.4 + Math.random() * 0.6
+      });
+    }
+  }
+
+  function hexToRgb(hex){
+    var v = parseInt(hex.slice(1), 16);
+    return { r:(v>>16)&255, g:(v>>8)&255, b:v&255 };
+  }
+
+  // ---------- particles ----------
+  var particles = [];
+  var MAX_PARTICLES = 260;
+
+  function spawnParticle(x, y, vx, vy, color, size, life){
+    if (particles.length >= MAX_PARTICLES) particles.shift();
+    particles.push({
+      x:x, y:y, vx:vx, vy:vy,
+      rgb: hexToRgb(color),
+      size: size, life: life, maxLife: life
+    });
+  }
+
+  function updateAndDrawParticles(dt){
+    ctx.globalCompositeOperation = 'lighter';
+    for (var i = particles.length - 1; i >= 0; i--){
+      var p = particles[i];
+      p.life -= dt;
+      if (p.life <= 0){ particles.splice(i, 1); continue; }
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy -= 10 * dt;            // gentle bioluminescent buoyancy
+      p.vx += Math.sin((p.life + p.x) * 0.6) * 4 * dt;
+      p.vx *= (1 - 0.6 * dt);
+      p.vy *= (1 - 0.4 * dt);
+
+      var t = p.life / p.maxLife;
+      var r = p.size * (0.4 + 0.6 * t);
+      var a = t;
+      var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+      g.addColorStop(0, 'rgba(' + p.rgb.r + ',' + p.rgb.g + ',' + p.rgb.b + ',' + (0.85*a).toFixed(3) + ')');
+      g.addColorStop(1, 'rgba(' + p.rgb.r + ',' + p.rgb.g + ',' + p.rgb.b + ',0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // ---------- ambient fireflies (idle life) ----------
+  var fireflies = [];
+  (function initFireflies(){
+    var n = reduceMotion ? 3 : 7;
+    for (var i = 0; i < n; i++){
+      fireflies.push({
+        baseX: Math.random(), baseY: Math.random(),
+        amp: 40 + Math.random() * 60,
+        speed: 0.15 + Math.random() * 0.2,
+        phase: Math.random() * Math.PI * 2,
+        color: currentPalette()[i % 3],
+        t: Math.random() * 1000
+      });
+    }
+  })();
+
+  function updateAndDrawFireflies(dt, time){
+    for (var i = 0; i < fireflies.length; i++){
+      var f = fireflies[i];
+      f.t += dt * f.speed;
+      var x = f.baseX * W + Math.sin(f.t + f.phase) * f.amp;
+      var y = f.baseY * H + Math.cos(f.t * 0.8 + f.phase) * f.amp * 0.7;
+      var pulse = 0.5 + 0.5 * Math.sin(time * 1.3 + f.phase);
+      var rgb = hexToRgb(f.color);
+      var r = 2.4 + pulse * 2.2;
+      var g = ctx.createRadialGradient(x, y, 0, x, y, r * 4);
+      g.addColorStop(0, 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + (0.55*pulse+0.15).toFixed(3) + ')');
+      g.addColorStop(1, 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, r * 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (!reduceMotion && Math.random() < 0.02){
+        spawnParticle(x, y, (Math.random()-0.5)*6, (Math.random()-0.5)*6, f.color, 10 + Math.random()*8, 1.6 + Math.random());
+      }
+    }
+  }
+
+  // ---------- touch heads ----------
+  var heads = new Map();
+  var touchColorCounter = 0;
+
+  function headColorForNewTouch(){
+    var pal = currentPalette();
+    var c = pal[touchColorCounter % pal.length];
+    touchColorCounter++;
+    return c;
+  }
+
+  function updateAndDrawHeads(dt){
+    heads.forEach(function(h){
+      var ease = 0.28;
+      var dx = h.tx - h.x, dy = h.ty - h.y;
+      h.vx = dx * ease / Math.max(dt, 0.001) * dt;
+      h.vy = dy * ease / Math.max(dt, 0.001) * dt;
+      h.x += dx * ease;
+      h.y += dy * ease;
+
+      h.emitAcc += dt;
+      var speed = Math.min(Math.hypot(dx, dy), 60);
+      var interval = 0.03;
+      while (h.emitAcc > interval){
+        h.emitAcc -= interval;
+        var jitter = 18 + speed * 0.6;
+        spawnParticle(
+          h.x, h.y,
+          (Math.random()-0.5) * jitter,
+          (Math.random()-0.5) * jitter - speed * 0.3,
+          h.color, 12 + Math.random()*10, 1.1 + Math.random()*0.8
+        );
+      }
+
+      var rgb = hexToRgb(h.color);
+      var g = ctx.createRadialGradient(h.x, h.y, 0, h.x, h.y, 26);
+      g.addColorStop(0, 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.9)');
+      g.addColorStop(0.4, 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.35)');
+      g.addColorStop(1, 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(h.x, h.y, 26, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  // ---------- audio ----------
+  var audioCtx = null, masterGain = null, delayNode = null, feedbackGain = null, delayFilter = null;
+  var voices = new Map();
+  var soundEnabled = true;
+  var SCALE = [130.81,146.83,164.81,196.00,220.00,261.63,293.66,329.63,392.00,440.00,523.25,587.33,659.25,783.99,880.00];
+
+  function ensureAudio(){
+    if (audioCtx) return;
+    var Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    audioCtx = new Ctx();
+
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = 0.55;
+
+    delayNode = audioCtx.createDelay(1.0);
+    delayNode.delayTime.value = 0.32;
+    delayFilter = audioCtx.createBiquadFilter();
+    delayFilter.type = 'lowpass';
+    delayFilter.frequency.value = 1800;
+    feedbackGain = audioCtx.createGain();
+    feedbackGain.gain.value = 0.32;
+
+    delayNode.connect(delayFilter);
+    delayFilter.connect(feedbackGain);
+    feedbackGain.connect(delayNode);
+    delayNode.connect(masterGain);
+
+    masterGain.connect(audioCtx.destination);
+  }
+
+  function noteForY(y){
+    var t = 1 - Math.min(Math.max(y / H, 0), 1);
+    var idx = Math.round(t * (SCALE.length - 1));
+    return SCALE[idx];
+  }
+
+  function playTone(id, x, y){
+    if (!soundEnabled) return;
+    ensureAudio();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+
+    var freq = noteForY(y);
+    var osc = audioCtx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.value = freq;
+
+    var gain = audioCtx.createGain();
+    gain.gain.value = 0;
+
+    var pan = audioCtx.createStereoPanner ? audioCtx.createStereoPanner() : null;
+    if (pan) pan.pan.value = Math.min(Math.max((x / W) * 2 - 1, -1), 1);
+
+    var filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 2600;
+
+    osc.connect(filter);
+    filter.connect(gain);
+    if (pan){ gain.connect(pan); pan.connect(masterGain); pan.connect(delayNode); }
+    else { gain.connect(masterGain); gain.connect(delayNode); }
+
+    var now = audioCtx.currentTime;
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.22, now + 0.05);
+    gain.gain.linearRampToValueAtTime(0.12, now + 0.4);
+
+    osc.start(now);
+    voices.set(id, { osc:osc, gain:gain, filter:filter });
+  }
+
+  function moveTone(id, x, y){
+    var v = voices.get(id);
+    if (!v || !audioCtx) return;
+    var freq = noteForY(y);
+    v.osc.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.08);
+    v.filter.frequency.setTargetAtTime(1800 + (x / W) * 1800, audioCtx.currentTime, 0.15);
+  }
+
+  function releaseTone(id){
+    var v = voices.get(id);
+    if (!v || !audioCtx) return;
+    var now = audioCtx.currentTime;
+    v.gain.gain.cancelScheduledValues(now);
+    v.gain.gain.setValueAtTime(v.gain.gain.value, now);
+    v.gain.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
+    v.osc.stop(now + 0.95);
+    voices.delete(id);
+  }
+
+  // ---------- pointer handling ----------
+  var veil = document.getElementById('veil');
+  var veilDismissed = false;
+
+  function dismissVeil(){
+    if (veilDismissed) return;
+    veilDismissed = true;
+    veil.classList.add('hidden');
+  }
+
+  function pointerPos(e){
+    var rect = canvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  canvas.addEventListener('pointerdown', function(e){
+    e.preventDefault();
+    dismissVeil();
+    var pos = pointerPos(e);
+    var color = headColorForNewTouch();
+    heads.set(e.pointerId, {
+      x: pos.x, y: pos.y, tx: pos.x, ty: pos.y,
+      vx: 0, vy: 0, color: color, emitAcc: 0
+    });
+    playTone(e.pointerId, pos.x, pos.y);
+    try { canvas.setPointerCapture(e.pointerId); } catch(err){}
+  }, { passive:false });
+
+  canvas.addEventListener('pointermove', function(e){
+    if (!heads.has(e.pointerId)) return;
+    e.preventDefault();
+    var pos = pointerPos(e);
+    var h = heads.get(e.pointerId);
+    h.tx = pos.x; h.ty = pos.y;
+    moveTone(e.pointerId, pos.x, pos.y);
+  }, { passive:false });
+
+  function endTouch(e){
+    if (!heads.has(e.pointerId)) return;
+    heads.delete(e.pointerId);
+    releaseTone(e.pointerId);
+  }
+  canvas.addEventListener('pointerup', endTouch, { passive:false });
+  canvas.addEventListener('pointercancel', endTouch, { passive:false });
+  canvas.addEventListener('pointerleave', endTouch, { passive:false });
+
+  document.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+  document.addEventListener('gesturestart', function(e){ e.preventDefault(); });
+
+  // ---------- controls ----------
+  var soundBtn = document.getElementById('soundBtn');
+  var paletteBtn = document.getElementById('paletteBtn');
+  var clearBtn = document.getElementById('clearBtn');
+
+  soundBtn.addEventListener('click', function(){
+    soundEnabled = !soundEnabled;
+    soundBtn.textContent = 'Sound · ' + (soundEnabled ? 'On' : 'Off');
+    soundBtn.setAttribute('data-active', soundEnabled ? 'true' : 'false');
+    if (masterGain){
+      var now = audioCtx.currentTime;
+      masterGain.gain.cancelScheduledValues(now);
+      masterGain.gain.setTargetAtTime(soundEnabled ? 0.55 : 0.0, now, 0.15);
+    }
+  });
+
+  paletteBtn.addEventListener('click', function(){
+    paletteIndex = (paletteIndex + 1) % paletteNames.length;
+    paletteBtn.textContent = paletteNames[paletteIndex];
+    for (var i = 0; i < fireflies.length; i++){
+      fireflies[i].color = currentPalette()[i % 3];
+    }
+  });
+
+  clearBtn.addEventListener('click', function(){
+    particles.length = 0;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#05060b';
+    ctx.fillRect(0, 0, W, H);
+  });
+
+  // ---------- main loop ----------
+  var lastTime = performance.now();
+
+  function frame(now){
+    var dt = Math.min((now - lastTime) / 1000, 0.05);
+    lastTime = now;
+    var t = now / 1000;
+
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = 'rgba(5,6,11,0.22)';
+    ctx.fillRect(0, 0, W, H);
+
+    for (var i = 0; i < stars.length; i++){
+      var s = stars[i];
+      var tw = 0.35 + 0.35 * Math.sin(t * s.speed + s.phase);
+      ctx.fillStyle = 'rgba(216,236,233,' + tw.toFixed(3) + ')';
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.globalCompositeOperation = 'lighter';
+    updateAndDrawFireflies(dt, t);
+    updateAndDrawHeads(dt);
+    updateAndDrawParticles(dt);
+
+    requestAnimationFrame(frame);
+  }
+
+  resize();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
