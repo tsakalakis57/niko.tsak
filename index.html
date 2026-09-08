@@ -1,6 +1,7 @@
 <title>Pick &amp; Place</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.140.2/three.min.js"></script>
 <style>
   :root{
     --bg:#f2f0e6;
@@ -86,7 +87,10 @@
   .status{ margin-top:.7rem; font-size:.74rem; color:var(--ink-dim); }
   .status b{ color:var(--accent); font-weight:500; }
 
-  canvas{ display:block; width:100%; aspect-ratio:4/3; border-radius:10px; border:1px solid var(--line); background:var(--floor); }
+  canvas{ display:block; width:100%; aspect-ratio:4/3; border-radius:10px; border:1px solid var(--line); background:var(--floor); touch-action:none; cursor:grab; }
+  canvas:active{ cursor:grabbing; }
+
+  .viewhint{ margin-top:.5rem; font-size:.68rem; letter-spacing:.03em; color:var(--ink-dim); }
 
   .readout{ margin-top:.65rem; font-size:.76rem; color:var(--ink-dim); display:flex; gap:1.3em; flex-wrap:wrap;
             font-variant-numeric:tabular-nums; }
@@ -147,6 +151,7 @@
     <section class="panel">
       <h2>Workshop</h2>
       <canvas id="scene" aria-label="Robot arm simulator"></canvas>
+      <p class="viewhint">Drag to orbit · pinch or scroll to zoom</p>
       <div class="readout">
         <span>Shoulder <b id="roShoulder">0°</b></span>
         <span>Elbow <b id="roElbow">60°</b></span>
@@ -358,7 +363,11 @@
         var d = dist(tip, b.pos);
         if (d < GRAB_TOL && d < nd){ nd = d; nearest = b; }
       }
-      if (nearest){ nearest.held = true; state.heldBlock = nearest; log('Gripper closed — holding the ' + nearest.color + ' block.'); }
+      if (nearest){
+        nearest.held = true; state.heldBlock = nearest;
+        attachHeldBlock(nearest);
+        log('Gripper closed — holding the ' + nearest.color + ' block.');
+      }
       else { log('Gripper closed on empty air.'); }
     } else {
       if (state.heldBlock){
@@ -366,12 +375,13 @@
         held.held = false;
         held.pos = { x: tip.x, y: tip.y };
         state.heldBlock = null;
+        releaseHeldBlock(held);
         var pad = null;
         for (var j = 0; j < pads.length; j++){
           var p = pads[j];
           if (!p.solved && p.color === held.color && dist(tip, { x: p.x, y: p.y }) < PAD_TOL){ pad = p; break; }
         }
-        if (pad){ pad.solved = true; log('The ' + held.color + ' block landed on its pad. Nice.'); }
+        if (pad){ markPadSolved(pad); log('The ' + held.color + ' block landed on its pad. Nice.'); }
         else { log('Gripper opened — ' + held.color + ' block placed on the table.'); }
       } else {
         log('Gripper opened.');
@@ -438,8 +448,8 @@
     gen = null;
     animGen++;
     state.shoulder = 0; state.elbow = 60; state.gripperOpen = 1; state.heldBlock = null;
-    blocks.forEach(function(b){ b.pos = { x: b.home.x, y: b.home.y }; b.held = false; });
-    pads.forEach(function(p){ p.solved = false; });
+    blocks.forEach(function(b){ b.pos = { x: b.home.x, y: b.home.y }; b.held = false; resetBlockMesh(b); });
+    pads.forEach(function(p){ p.solved = false; resetPadMesh(p); });
     currentLineEl.textContent = 'nothing yet. Press Run.';
     clearLog();
     log('Arm reset to home position.');
@@ -515,127 +525,260 @@
   resetBtn.addEventListener('click', function(){ resetSim(); });
   speedEl.addEventListener('input', function(){ speedVal.textContent = parseFloat(speedEl.value).toFixed(2).replace(/0$/, '') + '×'; });
 
-  // ---------- rendering ----------
+  // ---------- rendering (3D) ----------
   var canvas = document.getElementById('scene');
-  var ctx = canvas.getContext('2d');
-  var cssW = 0, cssH = 0, pxPerUnit = 100, baseScreen = { x: 0, y: 0 };
 
   var rootStyle = getComputedStyle(document.documentElement);
   function cssVar(name){ return rootStyle.getPropertyValue(name).trim(); }
   var COLORS = {
-    ink: cssVar('--ink'), inkDim: cssVar('--ink-dim'), line: cssVar('--line'),
-    surface2: cssVar('--surface-2'), floor: cssVar('--floor'), accent: cssVar('--accent'),
-    accent2: cssVar('--accent-2'), red: cssVar('--red'), teal: cssVar('--teal'), violet: cssVar('--violet')
+    ink: cssVar('--ink'), line: cssVar('--line'), bg: cssVar('--bg'),
+    surface: cssVar('--surface'), surface2: cssVar('--surface-2'), floor: cssVar('--floor'),
+    accent: cssVar('--accent'), accent2: cssVar('--accent-2'),
+    red: cssVar('--red'), teal: cssVar('--teal'), violet: cssVar('--violet')
   };
 
-  function hexAlpha(hex, a){
-    var v = hex.replace('#', '');
-    var r = parseInt(v.substring(0, 2), 16), g = parseInt(v.substring(2, 4), 16), b = parseInt(v.substring(4, 6), 16);
-    return 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+  var SCALE = 1.6;                 // world units per kinematic unit
+  var COLUMN_H = 1.0, PLATE_H = 0.12;
+  var SHOULDER_Y = COLUMN_H + PLATE_H;
+  var L1W = L1 * SCALE, L2W = L2 * SCALE;
+  var BLOCK_H = 0.16;
+  var WRIST_DROP = SHOULDER_Y - BLOCK_H / 2; // aligns jaw/held-block height with a resting block's center
+
+  function toWorldXZ(u){ return { x: u.x * SCALE, z: -u.y * SCALE }; }
+
+  var scene = new THREE.Scene();
+  scene.background = new THREE.Color(COLORS.bg);
+  scene.fog = new THREE.Fog(new THREE.Color(COLORS.bg).getHex(), 7, 15);
+
+  var camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+
+  var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  if ('outputEncoding' in renderer) renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+
+  // lights
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x33322c, 0.65));
+  var keyLight = new THREE.DirectionalLight(0xfff3e6, 1.15);
+  keyLight.position.set(4.5, 6.5, 3.5);
+  keyLight.castShadow = true;
+  keyLight.shadow.mapSize.set(1024, 1024);
+  keyLight.shadow.camera.left = -6; keyLight.shadow.camera.right = 6;
+  keyLight.shadow.camera.top = 6; keyLight.shadow.camera.bottom = -6;
+  keyLight.shadow.camera.near = 0.5; keyLight.shadow.camera.far = 18;
+  keyLight.shadow.bias = -0.0015;
+  scene.add(keyLight);
+  var fillLight = new THREE.DirectionalLight(0xdfeaff, 0.35);
+  fillLight.position.set(-5, 3.5, -3);
+  scene.add(fillLight);
+
+  // floor + table
+  var floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(40, 40),
+    new THREE.MeshStandardMaterial({ color: COLORS.floor, roughness: 1, metalness: 0 })
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = -0.45;
+  floor.receiveShadow = true;
+  scene.add(floor);
+
+  var TABLE_SIDE = 9.2, TABLE_THICK = 0.15;
+  var table = new THREE.Mesh(
+    new THREE.BoxGeometry(TABLE_SIDE, TABLE_THICK, TABLE_SIDE),
+    new THREE.MeshStandardMaterial({ color: COLORS.surface2, roughness: 0.85, metalness: 0.05 })
+  );
+  table.position.y = -TABLE_THICK / 2;
+  table.receiveShadow = true;
+  scene.add(table);
+
+  var grid = new THREE.GridHelper(8.6, 18, COLORS.line, COLORS.line);
+  grid.position.y = 0.004;
+  grid.material.transparent = true;
+  grid.material.opacity = 0.35;
+  scene.add(grid);
+
+  // materials
+  var metalMat = new THREE.MeshStandardMaterial({ color: 0x2c2e34, roughness: 0.35, metalness: 0.8 });
+  var accentMat = new THREE.MeshStandardMaterial({ color: COLORS.accent, roughness: 0.4, metalness: 0.45 });
+  var jawMat = new THREE.MeshStandardMaterial({ color: COLORS.accent2, roughness: 0.3, metalness: 0.55 });
+
+  // arm hierarchy: baseGroup -> shoulderGroup(rot.y=shoulder) -> link1 + elbowGroup(rot.y=elbow) -> link2 + gripperGroup
+  var baseGroup = new THREE.Group();
+  scene.add(baseGroup);
+
+  var basePlate = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.48, PLATE_H, 32), metalMat);
+  basePlate.position.y = PLATE_H / 2;
+  basePlate.castShadow = true; basePlate.receiveShadow = true;
+  baseGroup.add(basePlate);
+
+  var column = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, COLUMN_H, 24), metalMat);
+  column.position.y = PLATE_H + COLUMN_H / 2;
+  column.castShadow = true;
+  baseGroup.add(column);
+
+  var shoulderGroup = new THREE.Group();
+  shoulderGroup.position.set(0, SHOULDER_Y, 0);
+  baseGroup.add(shoulderGroup);
+
+  var shoulderHub = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.22, 24), metalMat);
+  shoulderHub.castShadow = true;
+  shoulderGroup.add(shoulderHub);
+
+  var link1 = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.16, L1W), accentMat);
+  link1.position.set(0, 0, L1W / 2);
+  link1.castShadow = true; link1.receiveShadow = true;
+  shoulderGroup.add(link1);
+
+  var elbowGroup = new THREE.Group();
+  elbowGroup.position.set(0, 0, L1W);
+  shoulderGroup.add(elbowGroup);
+
+  var elbowHub = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.2, 24), metalMat);
+  elbowHub.castShadow = true;
+  elbowGroup.add(elbowHub);
+
+  var link2 = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.13, L2W), accentMat);
+  link2.position.set(0, 0, L2W / 2);
+  link2.castShadow = true; link2.receiveShadow = true;
+  elbowGroup.add(link2);
+
+  var gripperGroup = new THREE.Group();
+  gripperGroup.position.set(0, 0, L2W);
+  elbowGroup.add(gripperGroup);
+
+  var wrist = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, WRIST_DROP, 16), metalMat);
+  wrist.position.set(0, -WRIST_DROP / 2, 0);
+  wrist.castShadow = true;
+  gripperGroup.add(wrist);
+
+  var jawGeo = new THREE.BoxGeometry(0.045, 0.05, 0.26);
+  var jawL = new THREE.Mesh(jawGeo, jawMat);
+  var jawR = new THREE.Mesh(jawGeo, jawMat);
+  jawL.castShadow = true; jawR.castShadow = true;
+  gripperGroup.add(jawL, jawR);
+
+  function updateJaws(){
+    var spread = 0.03 + 0.11 * state.gripperOpen;
+    jawL.position.set(-spread, -WRIST_DROP, 0.09);
+    jawR.position.set(spread, -WRIST_DROP, 0.09);
   }
 
-  function roundRect(c, x, y, w, h, r){
-    c.beginPath();
-    c.moveTo(x + r, y);
-    c.arcTo(x + w, y, x + w, y + h, r);
-    c.arcTo(x + w, y + h, x, y + h, r);
-    c.arcTo(x, y + h, x, y, r);
-    c.arcTo(x, y, x + w, y, r);
-    c.closePath();
-  }
+  // blocks + pads: attach a mesh to each existing logical object
+  var blockGeo = new THREE.BoxGeometry(0.24, BLOCK_H, 0.24);
+  blocks.forEach(function(b){
+    var mat = new THREE.MeshStandardMaterial({ color: COLORS[b.color], roughness: 0.5, metalness: 0.06 });
+    var mesh = new THREE.Mesh(blockGeo, mat);
+    mesh.castShadow = true; mesh.receiveShadow = true;
+    scene.add(mesh);
+    b.mesh = mesh;
+    resetBlockMesh(b);
+  });
 
-  function toScreen(u){ return { x: baseScreen.x + u.x * pxPerUnit, y: baseScreen.y + u.y * pxPerUnit }; }
-
-  function computeLayout(){
-    var pad = 18;
-    baseScreen = { x: cssW / 2, y: cssH - 20 };
-    var availH = baseScreen.y - pad - 10;
-    var availW = (cssW - pad * 2) / 2 - 10;
-    pxPerUnit = Math.max(40, (Math.min(availH, availW) / REACH) * 0.9);
-  }
-
-  function fitCanvas(){
-    var rect = canvas.getBoundingClientRect();
-    cssW = rect.width; cssH = rect.height;
-    var dpr = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = Math.round(cssW * dpr);
-    canvas.height = Math.round(cssH * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    computeLayout();
-  }
-  new ResizeObserver(fitCanvas).observe(canvas);
-  window.addEventListener('orientationchange', fitCanvas);
-
-  function drawTable(){
-    var pad = 18, bottomGap = 46;
-    ctx.fillStyle = COLORS.surface2;
-    ctx.strokeStyle = COLORS.line;
-    ctx.lineWidth = 1.5;
-    roundRect(ctx, pad, pad, cssW - pad * 2, cssH - pad - bottomGap, 16);
-    ctx.fill(); ctx.stroke();
-
-    ctx.strokeStyle = hexAlpha(COLORS.line, 0.6);
-    ctx.lineWidth = 1;
-    var step = 28;
-    for (var x = pad + step; x < cssW - pad; x += step){
-      ctx.beginPath(); ctx.moveTo(x, pad); ctx.lineTo(x, cssH - bottomGap); ctx.stroke();
-    }
-    for (var y = pad + step; y < cssH - bottomGap; y += step){
-      ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(cssW - pad, y); ctx.stroke();
-    }
-  }
-
-  function drawPad(p){
-    var s = toScreen({ x: p.x, y: p.y });
-    var color = COLORS[p.color];
-    ctx.save();
-    ctx.setLineDash(p.solved ? [] : [5, 4]);
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = color;
-    ctx.fillStyle = hexAlpha(color, p.solved ? 0.3 : 0.1);
-    ctx.beginPath(); ctx.arc(s.x, s.y, 16, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    ctx.restore();
-  }
-
-  function drawBlockAt(p, colorName){
-    var size = 22;
-    ctx.fillStyle = COLORS[colorName];
-    ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-    ctx.lineWidth = 1.5;
-    roundRect(ctx, p.x - size / 2, p.y - size / 2, size, size, 4);
-    ctx.fill(); ctx.stroke();
-  }
-
-  function drawLink(p1, p2, color, width){
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-    ctx.lineWidth = width + 3;
-    ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = width;
-    ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
-  }
-
-  function drawJoint(p, r){
-    ctx.fillStyle = COLORS.surface2;
-    ctx.strokeStyle = COLORS.ink;
-    ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-  }
-
-  function drawGripper(jS, tS){
-    var ang = Math.atan2(tS.y - jS.y, tS.x - jS.x);
-    var spread = (8 + 24 * state.gripperOpen) * D2R;
-    var len = 16;
-    ctx.strokeStyle = COLORS.accent2;
-    ctx.lineWidth = 5;
-    ctx.lineCap = 'round';
-    [-1, 1].forEach(function(sign){
-      var a = ang + sign * spread;
-      var ex = tS.x + Math.cos(a) * len, ey = tS.y + Math.sin(a) * len;
-      ctx.beginPath(); ctx.moveTo(tS.x, tS.y); ctx.lineTo(ex, ey); ctx.stroke();
+  var padGeo = new THREE.RingGeometry(0.15, 0.22, 40);
+  pads.forEach(function(p){
+    var mat = new THREE.MeshStandardMaterial({
+      color: COLORS[p.color], roughness: 0.6, metalness: 0.1,
+      transparent: true, opacity: 0.35, side: THREE.DoubleSide,
+      emissive: new THREE.Color(COLORS[p.color]), emissiveIntensity: 0
     });
+    var mesh = new THREE.Mesh(padGeo, mat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.receiveShadow = true;
+    var w = toWorldXZ({ x: p.x, y: p.y });
+    mesh.position.set(w.x, 0.006, w.z);
+    scene.add(mesh);
+    p.mesh = mesh;
+  });
+
+  function resetBlockMesh(b){
+    if (b.mesh.parent !== scene) scene.add(b.mesh);
+    var w = toWorldXZ(b.pos);
+    b.mesh.position.set(w.x, BLOCK_H / 2, w.z);
+    b.mesh.rotation.set(0, 0, 0);
   }
+  function resetPadMesh(p){
+    p.mesh.material.opacity = 0.35;
+    p.mesh.material.emissiveIntensity = 0;
+  }
+  function attachHeldBlock(b){
+    gripperGroup.add(b.mesh);
+    b.mesh.position.set(0, -WRIST_DROP, 0.09);
+    b.mesh.rotation.set(0, 0, 0);
+  }
+  function releaseHeldBlock(b){
+    var world = new THREE.Vector3();
+    b.mesh.getWorldPosition(world);
+    scene.add(b.mesh);
+    b.mesh.position.set(world.x, BLOCK_H / 2, world.z);
+  }
+  function markPadSolved(p){
+    p.solved = true;
+    p.mesh.material.opacity = 0.78;
+    p.mesh.material.emissiveIntensity = 0.55;
+  }
+
+  // ---------- orbit camera (touch-first: 1-finger orbit, pinch/wheel zoom) ----------
+  var orbit = { az: 0.65, pol: 1.0, dist: 7, target: new THREE.Vector3(0, 0.55, 0) };
+  function clampPolar(p){ return Math.min(Math.max(p, 0.28), 1.45); }
+  function updateCameraFromOrbit(){
+    var p = orbit.pol, a = orbit.az, d = orbit.dist;
+    camera.position.set(
+      orbit.target.x + d * Math.sin(p) * Math.sin(a),
+      orbit.target.y + d * Math.cos(p),
+      orbit.target.z + d * Math.sin(p) * Math.cos(a)
+    );
+    camera.lookAt(orbit.target);
+  }
+
+  var pointers = new Map();
+  var lastPinchDist = null;
+  canvas.addEventListener('pointerdown', function(e){
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try { canvas.setPointerCapture(e.pointerId); } catch (err){}
+  });
+  canvas.addEventListener('pointermove', function(e){
+    if (!pointers.has(e.pointerId)) return;
+    var prev = pointers.get(e.pointerId);
+    var cur = { x: e.clientX, y: e.clientY };
+    pointers.set(e.pointerId, cur);
+    if (pointers.size === 1){
+      var dx = cur.x - prev.x, dy = cur.y - prev.y;
+      orbit.az -= dx * 0.0065;
+      orbit.pol = clampPolar(orbit.pol - dy * 0.0065);
+      updateCameraFromOrbit();
+    } else if (pointers.size === 2){
+      var pts = Array.from(pointers.values());
+      var d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      if (lastPinchDist != null){
+        orbit.dist = Math.min(Math.max(orbit.dist - (d - lastPinchDist) * 0.018, 3), 13);
+        updateCameraFromOrbit();
+      }
+      lastPinchDist = d;
+    }
+  });
+  function endPointer(e){ pointers.delete(e.pointerId); lastPinchDist = null; }
+  canvas.addEventListener('pointerup', endPointer);
+  canvas.addEventListener('pointercancel', endPointer);
+  canvas.addEventListener('pointerleave', endPointer);
+  canvas.addEventListener('wheel', function(e){
+    e.preventDefault();
+    orbit.dist = Math.min(Math.max(orbit.dist + e.deltaY * 0.012, 3), 13);
+    updateCameraFromOrbit();
+  }, { passive: false });
+
+  function fitRenderer(){
+    var rect = canvas.getBoundingClientRect();
+    var w = rect.width, h = rect.height;
+    if (w < 1 || h < 1) return;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  new ResizeObserver(fitRenderer).observe(canvas);
+  window.addEventListener('orientationchange', fitRenderer);
 
   var roShoulder = document.getElementById('roShoulder');
   var roElbow = document.getElementById('roElbow');
@@ -646,36 +789,18 @@
     roGripper.textContent = state.gripperOpen > 0.5 ? 'Open' : 'Closed';
   }
 
-  function drawScene(){
-    ctx.fillStyle = COLORS.floor;
-    ctx.fillRect(0, 0, cssW, cssH);
-
-    drawTable();
-    pads.forEach(drawPad);
-    blocks.forEach(function(b){ if (!b.held) drawBlockAt(toScreen(b.pos), b.color); });
-
-    var fkr = fk(state.shoulder, state.elbow);
-    var jS = toScreen(fkr.joint), tS = toScreen(fkr.tip);
-
-    ctx.fillStyle = COLORS.surface2;
-    ctx.strokeStyle = COLORS.line;
-    ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.ellipse(baseScreen.x, baseScreen.y, 30, 14, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-
-    drawLink(baseScreen, jS, COLORS.accent, 14);
-    drawLink(jS, tS, COLORS.accent, 11);
-    drawJoint(baseScreen, 9);
-    drawJoint(jS, 7);
-    drawGripper(jS, tS);
-
-    if (state.heldBlock){ drawBlockAt(tS, state.heldBlock.color); }
-
+  function animate(){
+    requestAnimationFrame(animate);
+    shoulderGroup.rotation.y = state.shoulder * D2R;
+    elbowGroup.rotation.y = state.elbow * D2R;
+    updateJaws();
     updateReadout();
-    requestAnimationFrame(drawScene);
+    renderer.render(scene, camera);
   }
 
-  fitCanvas();
-  requestAnimationFrame(drawScene);
+  fitRenderer();
+  updateCameraFromOrbit();
+  requestAnimationFrame(animate);
   resetSim();
   log('Program loaded. Press Run to move the arm.');
 })();
