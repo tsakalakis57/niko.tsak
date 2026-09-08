@@ -1,485 +1,682 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<title>Glow Tide</title>
+<title>Pick &amp; Place</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;1,9..144,340;1,9..144,480&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
 <style>
   :root{
-    --void: #05060b;
-    --void-2: #0c1120;
-    --tide: #35e7c9;
-    --ember: #ff6a4d;
-    --aurora: #9b8cff;
-    --mist: #d8ece9;
-    --mist-dim: rgba(216,236,233,0.52);
-    --hair: rgba(216,236,233,0.14);
+    --bg:#f2f0e6;
+    --floor:#e6e3d6;
+    --surface:#fffdf8;
+    --surface-2:#eae7db;
+    --ink:#201d17;
+    --ink-dim:#6b6659;
+    --line:#d9d5c6;
+    --accent:#e8650f;
+    --accent-ink:#1a1006;
+    --accent-2:#2f7a6b;
+    --danger:#c3402f;
+    --red:#c94a3a;
+    --teal:#2f9b8a;
+    --violet:#7a63c9;
   }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#121317; --floor:#191b20; --surface:#1b1e24; --surface-2:#23262d;
+      --ink:#ece9e1; --ink-dim:#9b978c; --line:#33363d;
+      --accent:#ff8a3d; --accent-ink:#1a1006; --accent-2:#4fb8a0; --danger:#ff6b60;
+      --red:#e5695a; --teal:#48b8a3; --violet:#a08ef0;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#121317; --floor:#191b20; --surface:#1b1e24; --surface-2:#23262d;
+    --ink:#ece9e1; --ink-dim:#9b978c; --line:#33363d;
+    --accent:#ff8a3d; --accent-ink:#1a1006; --accent-2:#4fb8a0; --danger:#ff6b60;
+    --red:#e5695a; --teal:#48b8a3; --violet:#a08ef0;
+  }
+
   *{ box-sizing:border-box; }
-  html,body{
-    margin:0; padding:0; width:100%; height:100%;
-    background:var(--void); color:var(--mist);
-    overflow:hidden; overscroll-behavior:none;
-    touch-action:none; -webkit-user-select:none; user-select:none;
-    font-family:'IBM Plex Mono', ui-monospace, monospace;
-  }
-  canvas{ position:fixed; inset:0; display:block; touch-action:none; }
-
-  .vignette{
-    position:fixed; inset:0; pointer-events:none;
-    background: radial-gradient(120% 90% at 50% 45%, transparent 45%, rgba(5,6,11,0.75) 100%);
+  html,body{ margin:0; padding:0; background:var(--bg); color:var(--ink); }
+  body{
+    font-family:'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+    -webkit-text-size-adjust:100%;
   }
 
-  .veil{
-    position:fixed; inset:0; display:flex; flex-direction:column;
-    align-items:center; justify-content:center; text-align:center;
-    gap:.9em; padding:0 1.5em;
-    background: radial-gradient(80% 60% at 50% 42%, rgba(12,17,32,0.55), rgba(5,6,11,0.86) 70%);
-    transition: opacity 900ms ease, visibility 900ms ease;
-  }
-  .veil.hidden{ opacity:0; visibility:hidden; pointer-events:none; }
-  .eyebrow{
-    margin:0; font-size:.72rem; letter-spacing:.28em; text-transform:uppercase;
-    color:var(--mist-dim); font-weight:500;
-  }
-  .title{
-    margin:0; font-family:'Fraunces', Georgia, serif; font-style:italic; font-weight:340;
-    font-size:clamp(2.6rem, 9vw, 5.2rem); line-height:1;
-    background:linear-gradient(100deg, var(--tide) 0%, var(--mist) 45%, var(--aurora) 100%);
-    -webkit-background-clip:text; background-clip:text; color:transparent;
-    text-wrap:balance;
-  }
-  .hint{
-    margin:0; font-size:.8rem; letter-spacing:.04em; color:var(--mist-dim);
-    max-width:26em;
-  }
+  .app{ max-width:1180px; margin:0 auto; padding:1.4rem clamp(1rem,3vw,2rem) 3rem; }
 
-  .tray{
-    position:fixed; left:50%; bottom:max(1.4em, env(safe-area-inset-bottom));
-    transform:translateX(-50%);
-    display:flex; gap:.4em; padding:.4em;
-    background:rgba(12,17,32,0.55); backdrop-filter:blur(18px) saturate(140%);
-    -webkit-backdrop-filter:blur(18px) saturate(140%);
-    border:1px solid var(--hair); border-radius:999px;
-    z-index:5;
-  }
-  .tray-btn{
-    appearance:none; border:none; cursor:pointer;
-    background:transparent; color:var(--mist-dim);
-    font-family:'IBM Plex Mono', monospace; font-size:.68rem; font-weight:500;
-    letter-spacing:.12em; text-transform:uppercase;
-    padding:.65em 1em; border-radius:999px;
-    transition: background 180ms ease, color 180ms ease;
-    white-space:nowrap;
-  }
-  .tray-btn:hover{ background:rgba(216,236,233,0.08); color:var(--mist); }
-  .tray-btn:focus-visible{ outline:2px solid var(--tide); outline-offset:2px; color:var(--mist); }
-  .tray-btn[data-active="true"]{ color:var(--tide); }
+  .topbar{ display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:.4rem 1.4rem; margin-bottom:1.2rem; }
+  .brand{ display:flex; align-items:baseline; gap:.7rem; flex-wrap:wrap; }
+  .eyebrow{ font-size:.68rem; letter-spacing:.24em; text-transform:uppercase; color:var(--ink-dim); }
+  h1{ margin:0; font-family:'Big Shoulders Display', system-ui, sans-serif; font-weight:700;
+      font-size:clamp(1.9rem, 4vw, 2.7rem); letter-spacing:.01em; text-transform:uppercase; text-wrap:balance; }
+  .tagline{ margin:0; font-size:.78rem; color:var(--ink-dim); max-width:30em; }
 
-  @media (prefers-reduced-motion: reduce){
-    .veil{ transition:none; }
-  }
+  .panels{ display:grid; grid-template-columns:minmax(300px,1fr) minmax(340px,1.1fr); gap:1.1rem; align-items:start; }
+  @media (max-width:860px){ .panels{ grid-template-columns:1fr; } }
+
+  .panel{ background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:1rem; }
+  .panel h2{ margin:0 0 .7rem; font-size:.72rem; letter-spacing:.18em; text-transform:uppercase; color:var(--ink-dim); font-weight:500; }
+
+  .toolbar{ display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; margin-bottom:.7rem; }
+  .btn{ font:inherit; font-size:.72rem; letter-spacing:.08em; text-transform:uppercase; font-weight:500;
+        padding:.6em 1.05em; border-radius:6px; border:1px solid var(--line); background:var(--surface-2);
+        color:var(--ink); cursor:pointer; }
+  .btn:hover{ border-color:var(--accent); }
+  .btn:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  .btn:disabled{ opacity:.45; cursor:not-allowed; }
+  .btn.primary{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:600; }
+  .btn.primary[data-running="true"]{ background:var(--danger); border-color:var(--danger); }
+
+  .speed{ display:flex; align-items:center; gap:.5em; font-size:.68rem; letter-spacing:.06em;
+          text-transform:uppercase; color:var(--ink-dim); margin-left:auto; }
+  .speed input{ accent-color:var(--accent); width:104px; }
+  .speed b{ color:var(--ink); font-variant-numeric:tabular-nums; font-weight:500; }
+
+  .palette{ display:flex; flex-wrap:wrap; gap:.4rem; margin-bottom:.7rem; }
+  .chip{ font:inherit; font-size:.68rem; padding:.42em .7em; border-radius:5px; border:1px dashed var(--line);
+         background:transparent; color:var(--ink-dim); cursor:pointer; }
+  .chip:hover{ color:var(--accent); border-color:var(--accent); }
+  .chip:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+
+  .editor-wrap{ display:flex; border:1px solid var(--line); border-radius:10px; overflow:hidden; background:var(--surface); }
+  .gutter{ padding:.75em .55em; text-align:right; color:var(--ink-dim); background:var(--surface-2);
+           font:.82rem/1.6 'JetBrains Mono', monospace; white-space:pre; overflow:hidden; user-select:none; }
+  textarea#code{ flex:1; border:none; outline:none; resize:vertical; min-height:300px;
+                 padding:.75em .9em; font:.82rem/1.6 'JetBrains Mono', monospace; color:var(--ink);
+                 background:transparent; tab-size:2; }
+
+  .status{ margin-top:.7rem; font-size:.74rem; color:var(--ink-dim); }
+  .status b{ color:var(--accent); font-weight:500; }
+
+  canvas{ display:block; width:100%; aspect-ratio:4/3; border-radius:10px; border:1px solid var(--line); background:var(--floor); }
+
+  .readout{ margin-top:.65rem; font-size:.76rem; color:var(--ink-dim); display:flex; gap:1.3em; flex-wrap:wrap;
+            font-variant-numeric:tabular-nums; }
+  .readout b{ color:var(--ink); font-weight:500; }
+
+  .log{ margin-top:.65rem; height:128px; overflow-y:auto; background:var(--surface-2); border:1px solid var(--line);
+        border-radius:8px; padding:.6rem .75rem; font-size:.72rem; line-height:1.55; }
+  .log-line{ color:var(--ink-dim); }
+  .log-error{ color:var(--danger); }
+
+  .legend{ margin-top:.7rem; display:flex; gap:1rem; flex-wrap:wrap; font-size:.68rem; color:var(--ink-dim); }
+  .legend span{ display:inline-flex; align-items:center; gap:.4em; }
+  .swatch{ width:.7em; height:.7em; border-radius:2px; display:inline-block; }
 </style>
-</head>
-<body>
 
-<canvas id="c" aria-hidden="true"></canvas>
-<div class="vignette"></div>
+<div class="app">
 
-<div class="veil" id="veil">
-  <p class="eyebrow">an instrument for the dark water</p>
-  <h1 class="title">Glow&nbsp;Tide</h1>
-  <p class="hint">Touch the screen — each finger wakes a current of light and a note of its own. Hold, drag, and let go with more than one hand.</p>
-</div>
+  <header class="topbar">
+    <div class="brand">
+      <span class="eyebrow">robot programming</span>
+      <h1>Pick &amp; Place</h1>
+    </div>
+    <p class="tagline">A small arm you program line by line — shoulder, elbow, gripper, repeat.</p>
+  </header>
 
-<div class="tray">
-  <button class="tray-btn" id="soundBtn" data-active="true" type="button">Sound · On</button>
-  <button class="tray-btn" id="paletteBtn" type="button">Tide</button>
-  <button class="tray-btn" id="clearBtn" type="button">Clear</button>
+  <div class="panels">
+
+    <section class="panel">
+      <h2>Program</h2>
+      <div class="toolbar">
+        <button class="btn primary" id="runBtn" type="button" data-running="false">Run</button>
+        <button class="btn" id="stepBtn" type="button">Step</button>
+        <button class="btn" id="resetBtn" type="button">Reset</button>
+        <div class="speed">
+          <label for="speed">Speed</label>
+          <input type="range" id="speed" min="0.5" max="3" step="0.25" value="1">
+          <b id="speedVal">1.0×</b>
+        </div>
+      </div>
+
+      <div class="palette" id="palette">
+        <button class="chip" data-snippet="shoulder(0)" type="button">shoulder( )</button>
+        <button class="chip" data-snippet="elbow(0)" type="button">elbow( )</button>
+        <button class="chip" data-snippet="gripper(open)" type="button">gripper(open)</button>
+        <button class="chip" data-snippet="gripper(close)" type="button">gripper(close)</button>
+        <button class="chip" data-snippet="wait(500)" type="button">wait( )</button>
+        <button class="chip" data-snippet="repeat(2) {&#10;&#10;}" type="button">repeat( ) { }</button>
+      </div>
+
+      <div class="editor-wrap">
+        <div class="gutter" id="gutter">1</div>
+        <textarea id="code" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"></textarea>
+      </div>
+
+      <p class="status">Now running — <b id="currentLine">nothing yet. Press Run.</b></p>
+    </section>
+
+    <section class="panel">
+      <h2>Workshop</h2>
+      <canvas id="scene" aria-label="Robot arm simulator"></canvas>
+      <div class="readout">
+        <span>Shoulder <b id="roShoulder">0°</b></span>
+        <span>Elbow <b id="roElbow">60°</b></span>
+        <span>Gripper <b id="roGripper">Open</b></span>
+      </div>
+      <div class="legend">
+        <span><i class="swatch" style="background:var(--red)"></i>red</span>
+        <span><i class="swatch" style="background:var(--teal)"></i>teal</span>
+        <span><i class="swatch" style="background:var(--violet)"></i>violet</span>
+      </div>
+      <div class="log" id="log"></div>
+    </section>
+
+  </div>
 </div>
 
 <script>
 (function(){
   "use strict";
 
-  var reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // ---------- kinematics ----------
+  var L1 = 1.3, L2 = 1.15, REACH = L1 + L2;
+  var D2R = Math.PI / 180;
 
-  // ---------- canvas setup ----------
-  var canvas = document.getElementById('c');
-  var ctx = canvas.getContext('2d', { alpha:false });
-  var W = 0, H = 0, DPR = 1;
-
-  function resize(){
-    DPR = Math.min(window.devicePixelRatio || 1, 2);
-    W = window.innerWidth; H = window.innerHeight;
-    canvas.width = Math.round(W * DPR);
-    canvas.height = Math.round(H * DPR);
-    canvas.style.width = W + 'px';
-    canvas.style.height = H + 'px';
-    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    buildStars();
+  function dir(a){ var r = a * D2R; return { x: Math.sin(r), y: -Math.cos(r) }; }
+  function fk(t1, t2){
+    var j = { x: dir(t1).x * L1, y: dir(t1).y * L1 };
+    var d2 = dir(t1 + t2);
+    return { joint: j, tip: { x: j.x + d2.x * L2, y: j.y + d2.y * L2 } };
   }
-  window.addEventListener('resize', resize);
+  function dist(a, b){ return Math.hypot(a.x - b.x, a.y - b.y); }
 
-  // ---------- palettes ----------
-  var PALETTES = {
-    Tide:   ['#35e7c9', '#5be0ff', '#8ff2d8'],
-    Ember:  ['#ff6a4d', '#ffb15e', '#ff8f6b'],
-    Aurora: ['#9b8cff', '#c58bff', '#7fa8ff']
-  };
-  var paletteNames = Object.keys(PALETTES);
-  var paletteIndex = 0;
-  function currentPalette(){ return PALETTES[paletteNames[paletteIndex]]; }
+  var BLOCK_DEFS = [
+    { color: 'red',    home: { t1: -55, t2: 70 } },
+    { color: 'teal',   home: { t1: -10, t2: 95 } },
+    { color: 'violet', home: { t1:  40, t2: 60 } }
+  ];
+  var PAD_DEFS = [
+    { color: 'red',    home: { t1: -70, t2: 25 } },
+    { color: 'teal',   home: { t1:  15, t2: 30 } },
+    { color: 'violet', home: { t1:  65, t2: 20 } }
+  ];
+  var blocks = BLOCK_DEFS.map(function(d){
+    var p = fk(d.home.t1, d.home.t2).tip;
+    return { color: d.color, home: { x: p.x, y: p.y }, pos: { x: p.x, y: p.y }, held: false };
+  });
+  var pads = PAD_DEFS.map(function(d){
+    var p = fk(d.home.t1, d.home.t2).tip;
+    return { color: d.color, x: p.x, y: p.y, solved: false };
+  });
 
-  // ---------- stars ----------
-  var stars = [];
-  function buildStars(){
-    var count = Math.round((W * H) / 9000);
-    stars = [];
-    for (var i = 0; i < count; i++){
-      stars.push({
-        x: Math.random() * W,
-        y: Math.random() * H,
-        r: Math.random() * 1.1 + 0.2,
-        phase: Math.random() * Math.PI * 2,
-        speed: 0.4 + Math.random() * 0.6
-      });
+  var GRAB_TOL = 0.26, PAD_TOL = 0.28;
+  var state = { shoulder: 0, elbow: 60, gripperOpen: 1, heldBlock: null };
+
+  // ---------- language ----------
+  var EXAMPLE =
+"// Welcome back to programming a robot arm.\n" +
+"// Commands:  shoulder(deg)   elbow(deg)   gripper(open|close)   wait(ms)\n" +
+"// Loops:     repeat(n) { ... }\n" +
+"// Ranges:    shoulder -100..100    elbow -150..150\n" +
+"\n" +
+"// Move the red block onto the red pad\n" +
+"shoulder(-55)\n" +
+"elbow(70)\n" +
+"gripper(close)\n" +
+"wait(150)\n" +
+"shoulder(-70)\n" +
+"elbow(25)\n" +
+"gripper(open)\n" +
+"\n" +
+"// Your turn: a teal block and a violet block are still waiting.\n";
+
+  function compileErr(line, msg){ var e = new Error(msg); e.line = line; return e; }
+  function stripComment(line){ var i = line.indexOf('//'); return i >= 0 ? line.slice(0, i) : line; }
+
+  function parseProgram(text){
+    var lines = text.split('\n')
+      .map(function(raw, i){ return { num: i + 1, code: stripComment(raw).trim() }; })
+      .filter(function(l){ return l.code.length > 0; });
+    var pos = 0;
+
+    function parseBlock(stopAtBrace){
+      var nodes = [];
+      while (pos < lines.length){
+        var line = lines[pos];
+        if (line.code === '}'){
+          if (stopAtBrace){ pos++; return nodes; }
+          throw compileErr(line.num, "Unexpected '}'.");
+        }
+        var repeatMatch = line.code.match(/^repeat\s*\(\s*(\d+)\s*\)\s*\{$/i);
+        if (repeatMatch){
+          var count = parseInt(repeatMatch[1], 10);
+          if (count < 1 || count > 50) throw compileErr(line.num, 'repeat(...) must be between 1 and 50.');
+          pos++;
+          var body = parseBlock(true);
+          nodes.push({ type: 'repeat', count: count, body: body, line: line.num });
+          continue;
+        }
+        var callMatch = line.code.match(/^([a-zA-Z]+)\s*\(\s*([^()]*)\s*\)$/);
+        if (!callMatch) throw compileErr(line.num, 'Can\'t understand "' + line.code + '".');
+        nodes.push({ type: 'call', name: callMatch[1].toLowerCase(), arg: callMatch[2].trim(), line: line.num });
+        pos++;
+      }
+      if (stopAtBrace) throw compileErr(lines.length ? lines[lines.length - 1].num : 1, "Missing closing '}' for repeat.");
+      return nodes;
     }
+
+    var ast = parseBlock(false);
+    validateCalls(ast);
+    var steps = countSteps(ast);
+    if (steps > 4000) throw compileErr(1, 'Program has ' + steps + ' steps — over the 4000 limit. Use smaller repeat counts.');
+    return ast;
   }
 
-  function hexToRgb(hex){
-    var v = parseInt(hex.slice(1), 16);
-    return { r:(v>>16)&255, g:(v>>8)&255, b:v&255 };
-  }
-
-  // ---------- particles ----------
-  var particles = [];
-  var MAX_PARTICLES = 260;
-
-  function spawnParticle(x, y, vx, vy, color, size, life){
-    if (particles.length >= MAX_PARTICLES) particles.shift();
-    particles.push({
-      x:x, y:y, vx:vx, vy:vy,
-      rgb: hexToRgb(color),
-      size: size, life: life, maxLife: life
-    });
-  }
-
-  function updateAndDrawParticles(dt){
-    ctx.globalCompositeOperation = 'lighter';
-    for (var i = particles.length - 1; i >= 0; i--){
-      var p = particles[i];
-      p.life -= dt;
-      if (p.life <= 0){ particles.splice(i, 1); continue; }
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-      p.vy -= 10 * dt;            // gentle bioluminescent buoyancy
-      p.vx += Math.sin((p.life + p.x) * 0.6) * 4 * dt;
-      p.vx *= (1 - 0.6 * dt);
-      p.vy *= (1 - 0.4 * dt);
-
-      var t = p.life / p.maxLife;
-      var r = p.size * (0.4 + 0.6 * t);
-      var a = t;
-      var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
-      g.addColorStop(0, 'rgba(' + p.rgb.r + ',' + p.rgb.g + ',' + p.rgb.b + ',' + (0.85*a).toFixed(3) + ')');
-      g.addColorStop(1, 'rgba(' + p.rgb.r + ',' + p.rgb.g + ',' + p.rgb.b + ',0)');
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  // ---------- ambient fireflies (idle life) ----------
-  var fireflies = [];
-  (function initFireflies(){
-    var n = reduceMotion ? 3 : 7;
-    for (var i = 0; i < n; i++){
-      fireflies.push({
-        baseX: Math.random(), baseY: Math.random(),
-        amp: 40 + Math.random() * 60,
-        speed: 0.15 + Math.random() * 0.2,
-        phase: Math.random() * Math.PI * 2,
-        color: currentPalette()[i % 3],
-        t: Math.random() * 1000
-      });
-    }
-  })();
-
-  function updateAndDrawFireflies(dt, time){
-    for (var i = 0; i < fireflies.length; i++){
-      var f = fireflies[i];
-      f.t += dt * f.speed;
-      var x = f.baseX * W + Math.sin(f.t + f.phase) * f.amp;
-      var y = f.baseY * H + Math.cos(f.t * 0.8 + f.phase) * f.amp * 0.7;
-      var pulse = 0.5 + 0.5 * Math.sin(time * 1.3 + f.phase);
-      var rgb = hexToRgb(f.color);
-      var r = 2.4 + pulse * 2.2;
-      var g = ctx.createRadialGradient(x, y, 0, x, y, r * 4);
-      g.addColorStop(0, 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + (0.55*pulse+0.15).toFixed(3) + ')');
-      g.addColorStop(1, 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0)');
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(x, y, r * 4, 0, Math.PI * 2);
-      ctx.fill();
-
-      if (!reduceMotion && Math.random() < 0.02){
-        spawnParticle(x, y, (Math.random()-0.5)*6, (Math.random()-0.5)*6, f.color, 10 + Math.random()*8, 1.6 + Math.random());
+  function validateCalls(nodes){
+    for (var i = 0; i < nodes.length; i++){
+      var n = nodes[i];
+      if (n.type === 'repeat'){ validateCalls(n.body); continue; }
+      var name = n.name, arg = n.arg, line = n.line;
+      if (name === 'shoulder' || name === 'elbow'){
+        var v = Number(arg);
+        if (!isFinite(v) || arg === '') throw compileErr(line, name + '(...) needs a number, e.g. ' + name + '(45)');
+        var range = name === 'shoulder' ? [-100, 100] : [-150, 150];
+        if (v < range[0] || v > range[1]) throw compileErr(line, name + ' angle must be between ' + range[0] + ' and ' + range[1] + '°.');
+        n.value = v;
+      } else if (name === 'gripper'){
+        var a = arg.replace(/["']/g, '').trim().toLowerCase();
+        if (a !== 'open' && a !== 'close') throw compileErr(line, 'gripper(...) must be open or close.');
+        n.value = a;
+      } else if (name === 'wait'){
+        var w = Number(arg);
+        if (!isFinite(w) || arg === '') throw compileErr(line, 'wait(...) needs a number of milliseconds.');
+        if (w < 0 || w > 3000) throw compileErr(line, 'wait must be between 0 and 3000 ms.');
+        n.value = w;
+      } else {
+        throw compileErr(line, 'Unknown command "' + name + '". Try shoulder, elbow, gripper, wait, or repeat.');
       }
     }
   }
 
-  // ---------- touch heads ----------
-  var heads = new Map();
-  var touchColorCounter = 0;
-
-  function headColorForNewTouch(){
-    var pal = currentPalette();
-    var c = pal[touchColorCounter % pal.length];
-    touchColorCounter++;
+  function countSteps(nodes){
+    var c = 0;
+    for (var i = 0; i < nodes.length; i++){
+      var n = nodes[i];
+      c += n.type === 'call' ? 1 : n.count * countSteps(n.body);
+    }
     return c;
   }
 
-  function updateAndDrawHeads(dt){
-    heads.forEach(function(h){
-      var ease = 0.28;
-      var dx = h.tx - h.x, dy = h.ty - h.y;
-      h.vx = dx * ease / Math.max(dt, 0.001) * dt;
-      h.vy = dy * ease / Math.max(dt, 0.001) * dt;
-      h.x += dx * ease;
-      h.y += dy * ease;
+  function* execAst(nodes){
+    for (var i = 0; i < nodes.length; i++){
+      var n = nodes[i];
+      if (n.type === 'call'){ yield n; }
+      else { for (var k = 0; k < n.count; k++){ yield* execAst(n.body); } }
+    }
+  }
 
-      h.emitAcc += dt;
-      var speed = Math.min(Math.hypot(dx, dy), 60);
-      var interval = 0.03;
-      while (h.emitAcc > interval){
-        h.emitAcc -= interval;
-        var jitter = 18 + speed * 0.6;
-        spawnParticle(
-          h.x, h.y,
-          (Math.random()-0.5) * jitter,
-          (Math.random()-0.5) * jitter - speed * 0.3,
-          h.color, 12 + Math.random()*10, 1.1 + Math.random()*0.8
-        );
+  // ---------- execution ----------
+  var ast = null, gen = null, running = false;
+  var animGen = 0;
+
+  function speedMultiplier(){ return parseFloat(speedEl.value); }
+
+  function animateJoint(which, target){
+    var myGen = ++animGen;
+    return new Promise(function(resolve){
+      var start = state[which];
+      var delta = target - start;
+      var dur = Math.max(120, Math.abs(delta) * 6 / speedMultiplier());
+      var t0 = performance.now();
+      function step(now){
+        if (myGen !== animGen){ resolve(); return; }
+        var t = Math.min(1, (now - t0) / dur);
+        var eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+        state[which] = start + delta * eased;
+        if (t < 1){ requestAnimationFrame(step); }
+        else { state[which] = target; resolve(); }
       }
-
-      var rgb = hexToRgb(h.color);
-      var g = ctx.createRadialGradient(h.x, h.y, 0, h.x, h.y, 26);
-      g.addColorStop(0, 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.9)');
-      g.addColorStop(0.4, 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.35)');
-      g.addColorStop(1, 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0)');
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(h.x, h.y, 26, 0, Math.PI * 2);
-      ctx.fill();
+      requestAnimationFrame(step);
     });
   }
 
-  // ---------- audio ----------
-  var audioCtx = null, masterGain = null, delayNode = null, feedbackGain = null, delayFilter = null;
-  var voices = new Map();
-  var soundEnabled = true;
-  var SCALE = [130.81,146.83,164.81,196.00,220.00,261.63,293.66,329.63,392.00,440.00,523.25,587.33,659.25,783.99,880.00];
-
-  function ensureAudio(){
-    if (audioCtx) return;
-    var Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) return;
-    audioCtx = new Ctx();
-
-    masterGain = audioCtx.createGain();
-    masterGain.gain.value = 0.55;
-
-    delayNode = audioCtx.createDelay(1.0);
-    delayNode.delayTime.value = 0.32;
-    delayFilter = audioCtx.createBiquadFilter();
-    delayFilter.type = 'lowpass';
-    delayFilter.frequency.value = 1800;
-    feedbackGain = audioCtx.createGain();
-    feedbackGain.gain.value = 0.32;
-
-    delayNode.connect(delayFilter);
-    delayFilter.connect(feedbackGain);
-    feedbackGain.connect(delayNode);
-    delayNode.connect(masterGain);
-
-    masterGain.connect(audioCtx.destination);
-  }
-
-  function noteForY(y){
-    var t = 1 - Math.min(Math.max(y / H, 0), 1);
-    var idx = Math.round(t * (SCALE.length - 1));
-    return SCALE[idx];
-  }
-
-  function playTone(id, x, y){
-    if (!soundEnabled) return;
-    ensureAudio();
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-
-    var freq = noteForY(y);
-    var osc = audioCtx.createOscillator();
-    osc.type = 'triangle';
-    osc.frequency.value = freq;
-
-    var gain = audioCtx.createGain();
-    gain.gain.value = 0;
-
-    var pan = audioCtx.createStereoPanner ? audioCtx.createStereoPanner() : null;
-    if (pan) pan.pan.value = Math.min(Math.max((x / W) * 2 - 1, -1), 1);
-
-    var filter = audioCtx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = 2600;
-
-    osc.connect(filter);
-    filter.connect(gain);
-    if (pan){ gain.connect(pan); pan.connect(masterGain); pan.connect(delayNode); }
-    else { gain.connect(masterGain); gain.connect(delayNode); }
-
-    var now = audioCtx.currentTime;
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(0.22, now + 0.05);
-    gain.gain.linearRampToValueAtTime(0.12, now + 0.4);
-
-    osc.start(now);
-    voices.set(id, { osc:osc, gain:gain, filter:filter });
-  }
-
-  function moveTone(id, x, y){
-    var v = voices.get(id);
-    if (!v || !audioCtx) return;
-    var freq = noteForY(y);
-    v.osc.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.08);
-    v.filter.frequency.setTargetAtTime(1800 + (x / W) * 1800, audioCtx.currentTime, 0.15);
-  }
-
-  function releaseTone(id){
-    var v = voices.get(id);
-    if (!v || !audioCtx) return;
-    var now = audioCtx.currentTime;
-    v.gain.gain.cancelScheduledValues(now);
-    v.gain.gain.setValueAtTime(v.gain.gain.value, now);
-    v.gain.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
-    v.osc.stop(now + 0.95);
-    voices.delete(id);
-  }
-
-  // ---------- pointer handling ----------
-  var veil = document.getElementById('veil');
-  var veilDismissed = false;
-
-  function dismissVeil(){
-    if (veilDismissed) return;
-    veilDismissed = true;
-    veil.classList.add('hidden');
-  }
-
-  function pointerPos(e){
-    var rect = canvas.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  }
-
-  canvas.addEventListener('pointerdown', function(e){
-    e.preventDefault();
-    dismissVeil();
-    var pos = pointerPos(e);
-    var color = headColorForNewTouch();
-    heads.set(e.pointerId, {
-      x: pos.x, y: pos.y, tx: pos.x, ty: pos.y,
-      vx: 0, vy: 0, color: color, emitAcc: 0
+  function animateGripper(target){
+    var myGen = ++animGen;
+    return new Promise(function(resolve){
+      var start = state.gripperOpen;
+      var end = target === 'open' ? 1 : 0;
+      var dur = 260 / speedMultiplier();
+      var t0 = performance.now();
+      function step(now){
+        if (myGen !== animGen){ resolve(); return; }
+        var t = Math.min(1, (now - t0) / dur);
+        state.gripperOpen = start + (end - start) * t;
+        if (t < 1){ requestAnimationFrame(step); }
+        else { state.gripperOpen = end; onGripperSettled(target); resolve(); }
+      }
+      requestAnimationFrame(step);
     });
-    playTone(e.pointerId, pos.x, pos.y);
-    try { canvas.setPointerCapture(e.pointerId); } catch(err){}
-  }, { passive:false });
-
-  canvas.addEventListener('pointermove', function(e){
-    if (!heads.has(e.pointerId)) return;
-    e.preventDefault();
-    var pos = pointerPos(e);
-    var h = heads.get(e.pointerId);
-    h.tx = pos.x; h.ty = pos.y;
-    moveTone(e.pointerId, pos.x, pos.y);
-  }, { passive:false });
-
-  function endTouch(e){
-    if (!heads.has(e.pointerId)) return;
-    heads.delete(e.pointerId);
-    releaseTone(e.pointerId);
   }
-  canvas.addEventListener('pointerup', endTouch, { passive:false });
-  canvas.addEventListener('pointercancel', endTouch, { passive:false });
-  canvas.addEventListener('pointerleave', endTouch, { passive:false });
 
-  document.addEventListener('contextmenu', function(e){ e.preventDefault(); });
-  document.addEventListener('gesturestart', function(e){ e.preventDefault(); });
+  function onGripperSettled(target){
+    var tip = fk(state.shoulder, state.elbow).tip;
+    if (target === 'close'){
+      if (state.heldBlock){ log('Already holding a block.'); return; }
+      var nearest = null, nd = Infinity;
+      for (var i = 0; i < blocks.length; i++){
+        var b = blocks[i];
+        if (b.held) continue;
+        var d = dist(tip, b.pos);
+        if (d < GRAB_TOL && d < nd){ nd = d; nearest = b; }
+      }
+      if (nearest){ nearest.held = true; state.heldBlock = nearest; log('Gripper closed — holding the ' + nearest.color + ' block.'); }
+      else { log('Gripper closed on empty air.'); }
+    } else {
+      if (state.heldBlock){
+        var held = state.heldBlock;
+        held.held = false;
+        held.pos = { x: tip.x, y: tip.y };
+        state.heldBlock = null;
+        var pad = null;
+        for (var j = 0; j < pads.length; j++){
+          var p = pads[j];
+          if (!p.solved && p.color === held.color && dist(tip, { x: p.x, y: p.y }) < PAD_TOL){ pad = p; break; }
+        }
+        if (pad){ pad.solved = true; log('The ' + held.color + ' block landed on its pad. Nice.'); }
+        else { log('Gripper opened — ' + held.color + ' block placed on the table.'); }
+      } else {
+        log('Gripper opened.');
+      }
+    }
+  }
+
+  function waitMs(ms){ return new Promise(function(res){ setTimeout(res, ms / speedMultiplier()); }); }
+
+  function performCommand(node){
+    if (node.name === 'shoulder') return animateJoint('shoulder', node.value);
+    if (node.name === 'elbow') return animateJoint('elbow', node.value);
+    if (node.name === 'gripper') return animateGripper(node.value);
+    if (node.name === 'wait') return waitMs(node.value);
+  }
+
+  function reconstruct(node){ return node.name + '(' + node.value + ')'; }
+  function highlightStep(node){ currentLineEl.textContent = 'line ' + node.line + ' — ' + reconstruct(node); }
+
+  function compileProgram(){
+    try {
+      var parsed = parseProgram(codeEl.value);
+      ast = parsed;
+      log('Compiled ' + countSteps(ast) + ' step(s).');
+      return true;
+    } catch (e){
+      ast = null;
+      log('Line ' + e.line + ': ' + e.message, 'error');
+      return false;
+    }
+  }
+
+  function setRunUI(isRunning){
+    running = isRunning;
+    runBtn.textContent = isRunning ? 'Pause' : 'Run';
+    runBtn.setAttribute('data-running', isRunning ? 'true' : 'false');
+    stepBtn.disabled = isRunning;
+  }
+
+  async function runProgram(){
+    if (!ast && !compileProgram()) return;
+    if (!gen) gen = execAst(ast);
+    setRunUI(true);
+    while (running){
+      var res = gen.next();
+      if (res.done){ log('Program finished.'); gen = null; setRunUI(false); break; }
+      highlightStep(res.value);
+      await performCommand(res.value);
+    }
+  }
+
+  async function stepProgram(){
+    if (running) return;
+    if (!ast && !compileProgram()) return;
+    if (!gen) gen = execAst(ast);
+    var res = gen.next();
+    if (res.done){ log('Program finished.'); gen = null; return; }
+    highlightStep(res.value);
+    await performCommand(res.value);
+  }
+
+  function resetSim(){
+    setRunUI(false);
+    gen = null;
+    animGen++;
+    state.shoulder = 0; state.elbow = 60; state.gripperOpen = 1; state.heldBlock = null;
+    blocks.forEach(function(b){ b.pos = { x: b.home.x, y: b.home.y }; b.held = false; });
+    pads.forEach(function(p){ p.solved = false; });
+    currentLineEl.textContent = 'nothing yet. Press Run.';
+    clearLog();
+    log('Arm reset to home position.');
+  }
+
+  // ---------- log ----------
+  var logEl = document.getElementById('log');
+  function log(msg, type){
+    var line = document.createElement('div');
+    line.className = 'log-line' + (type === 'error' ? ' log-error' : '');
+    line.textContent = msg;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  function clearLog(){ logEl.innerHTML = ''; }
+
+  // ---------- editor ----------
+  var codeEl = document.getElementById('code');
+  var gutterEl = document.getElementById('gutter');
+  codeEl.value = EXAMPLE;
+
+  function updateGutter(){
+    var n = codeEl.value.split('\n').length;
+    var s = '';
+    for (var i = 1; i <= n; i++) s += i + '\n';
+    gutterEl.textContent = s;
+  }
+  codeEl.addEventListener('input', function(){ updateGutter(); ast = null; gen = null; });
+  codeEl.addEventListener('scroll', function(){ gutterEl.scrollTop = codeEl.scrollTop; });
+  codeEl.addEventListener('keydown', function(e){
+    if (e.key === 'Tab'){
+      e.preventDefault();
+      var start = codeEl.selectionStart, end = codeEl.selectionEnd;
+      codeEl.value = codeEl.value.slice(0, start) + '  ' + codeEl.value.slice(end);
+      codeEl.setSelectionRange(start + 2, start + 2);
+      updateGutter(); ast = null; gen = null;
+    } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter'){
+      e.preventDefault();
+      runBtn.click();
+    }
+  });
+  updateGutter();
+
+  function insertAtCursor(text){
+    var start = codeEl.selectionStart, end = codeEl.selectionEnd;
+    var before = codeEl.value.slice(0, start), after = codeEl.value.slice(end);
+    var prefix = (before.length > 0 && !before.endsWith('\n')) ? '\n' : '';
+    var insert = prefix + text + '\n';
+    codeEl.value = before + insert + after;
+    var pos = (before + insert).length;
+    codeEl.focus();
+    codeEl.setSelectionRange(pos, pos);
+    updateGutter(); ast = null; gen = null;
+  }
+  document.getElementById('palette').addEventListener('click', function(e){
+    var btn = e.target.closest('.chip');
+    if (!btn) return;
+    insertAtCursor(btn.getAttribute('data-snippet'));
+  });
 
   // ---------- controls ----------
-  var soundBtn = document.getElementById('soundBtn');
-  var paletteBtn = document.getElementById('paletteBtn');
-  var clearBtn = document.getElementById('clearBtn');
+  var runBtn = document.getElementById('runBtn');
+  var stepBtn = document.getElementById('stepBtn');
+  var resetBtn = document.getElementById('resetBtn');
+  var speedEl = document.getElementById('speed');
+  var speedVal = document.getElementById('speedVal');
+  var currentLineEl = document.getElementById('currentLine');
 
-  soundBtn.addEventListener('click', function(){
-    soundEnabled = !soundEnabled;
-    soundBtn.textContent = 'Sound · ' + (soundEnabled ? 'On' : 'Off');
-    soundBtn.setAttribute('data-active', soundEnabled ? 'true' : 'false');
-    if (masterGain){
-      var now = audioCtx.currentTime;
-      masterGain.gain.cancelScheduledValues(now);
-      masterGain.gain.setTargetAtTime(soundEnabled ? 0.55 : 0.0, now, 0.15);
-    }
+  runBtn.addEventListener('click', function(){
+    if (running){ setRunUI(false); } else { runProgram(); }
   });
+  stepBtn.addEventListener('click', function(){ stepProgram(); });
+  resetBtn.addEventListener('click', function(){ resetSim(); });
+  speedEl.addEventListener('input', function(){ speedVal.textContent = parseFloat(speedEl.value).toFixed(2).replace(/0$/, '') + '×'; });
 
-  paletteBtn.addEventListener('click', function(){
-    paletteIndex = (paletteIndex + 1) % paletteNames.length;
-    paletteBtn.textContent = paletteNames[paletteIndex];
-    for (var i = 0; i < fireflies.length; i++){
-      fireflies[i].color = currentPalette()[i % 3];
-    }
-  });
+  // ---------- rendering ----------
+  var canvas = document.getElementById('scene');
+  var ctx = canvas.getContext('2d');
+  var cssW = 0, cssH = 0, pxPerUnit = 100, baseScreen = { x: 0, y: 0 };
 
-  clearBtn.addEventListener('click', function(){
-    particles.length = 0;
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = '#05060b';
-    ctx.fillRect(0, 0, W, H);
-  });
+  var rootStyle = getComputedStyle(document.documentElement);
+  function cssVar(name){ return rootStyle.getPropertyValue(name).trim(); }
+  var COLORS = {
+    ink: cssVar('--ink'), inkDim: cssVar('--ink-dim'), line: cssVar('--line'),
+    surface2: cssVar('--surface-2'), floor: cssVar('--floor'), accent: cssVar('--accent'),
+    accent2: cssVar('--accent-2'), red: cssVar('--red'), teal: cssVar('--teal'), violet: cssVar('--violet')
+  };
 
-  // ---------- main loop ----------
-  var lastTime = performance.now();
-
-  function frame(now){
-    var dt = Math.min((now - lastTime) / 1000, 0.05);
-    lastTime = now;
-    var t = now / 1000;
-
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = 'rgba(5,6,11,0.22)';
-    ctx.fillRect(0, 0, W, H);
-
-    for (var i = 0; i < stars.length; i++){
-      var s = stars[i];
-      var tw = 0.35 + 0.35 * Math.sin(t * s.speed + s.phase);
-      ctx.fillStyle = 'rgba(216,236,233,' + tw.toFixed(3) + ')';
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    ctx.globalCompositeOperation = 'lighter';
-    updateAndDrawFireflies(dt, t);
-    updateAndDrawHeads(dt);
-    updateAndDrawParticles(dt);
-
-    requestAnimationFrame(frame);
+  function hexAlpha(hex, a){
+    var v = hex.replace('#', '');
+    var r = parseInt(v.substring(0, 2), 16), g = parseInt(v.substring(2, 4), 16), b = parseInt(v.substring(4, 6), 16);
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
   }
 
-  resize();
-  requestAnimationFrame(frame);
+  function roundRect(c, x, y, w, h, r){
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r);
+    c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r);
+    c.arcTo(x, y, x + w, y, r);
+    c.closePath();
+  }
+
+  function toScreen(u){ return { x: baseScreen.x + u.x * pxPerUnit, y: baseScreen.y + u.y * pxPerUnit }; }
+
+  function computeLayout(){
+    var pad = 18;
+    baseScreen = { x: cssW / 2, y: cssH - 20 };
+    var availH = baseScreen.y - pad - 10;
+    var availW = (cssW - pad * 2) / 2 - 10;
+    pxPerUnit = Math.max(40, (Math.min(availH, availW) / REACH) * 0.9);
+  }
+
+  function fitCanvas(){
+    var rect = canvas.getBoundingClientRect();
+    cssW = rect.width; cssH = rect.height;
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    computeLayout();
+  }
+  new ResizeObserver(fitCanvas).observe(canvas);
+  window.addEventListener('orientationchange', fitCanvas);
+
+  function drawTable(){
+    var pad = 18, bottomGap = 46;
+    ctx.fillStyle = COLORS.surface2;
+    ctx.strokeStyle = COLORS.line;
+    ctx.lineWidth = 1.5;
+    roundRect(ctx, pad, pad, cssW - pad * 2, cssH - pad - bottomGap, 16);
+    ctx.fill(); ctx.stroke();
+
+    ctx.strokeStyle = hexAlpha(COLORS.line, 0.6);
+    ctx.lineWidth = 1;
+    var step = 28;
+    for (var x = pad + step; x < cssW - pad; x += step){
+      ctx.beginPath(); ctx.moveTo(x, pad); ctx.lineTo(x, cssH - bottomGap); ctx.stroke();
+    }
+    for (var y = pad + step; y < cssH - bottomGap; y += step){
+      ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(cssW - pad, y); ctx.stroke();
+    }
+  }
+
+  function drawPad(p){
+    var s = toScreen({ x: p.x, y: p.y });
+    var color = COLORS[p.color];
+    ctx.save();
+    ctx.setLineDash(p.solved ? [] : [5, 4]);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = color;
+    ctx.fillStyle = hexAlpha(color, p.solved ? 0.3 : 0.1);
+    ctx.beginPath(); ctx.arc(s.x, s.y, 16, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawBlockAt(p, colorName){
+    var size = 22;
+    ctx.fillStyle = COLORS[colorName];
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+    ctx.lineWidth = 1.5;
+    roundRect(ctx, p.x - size / 2, p.y - size / 2, size, size, 4);
+    ctx.fill(); ctx.stroke();
+  }
+
+  function drawLink(p1, p2, color, width){
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+    ctx.lineWidth = width + 3;
+    ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+  }
+
+  function drawJoint(p, r){
+    ctx.fillStyle = COLORS.surface2;
+    ctx.strokeStyle = COLORS.ink;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  }
+
+  function drawGripper(jS, tS){
+    var ang = Math.atan2(tS.y - jS.y, tS.x - jS.x);
+    var spread = (8 + 24 * state.gripperOpen) * D2R;
+    var len = 16;
+    ctx.strokeStyle = COLORS.accent2;
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    [-1, 1].forEach(function(sign){
+      var a = ang + sign * spread;
+      var ex = tS.x + Math.cos(a) * len, ey = tS.y + Math.sin(a) * len;
+      ctx.beginPath(); ctx.moveTo(tS.x, tS.y); ctx.lineTo(ex, ey); ctx.stroke();
+    });
+  }
+
+  var roShoulder = document.getElementById('roShoulder');
+  var roElbow = document.getElementById('roElbow');
+  var roGripper = document.getElementById('roGripper');
+  function updateReadout(){
+    roShoulder.textContent = Math.round(state.shoulder) + '°';
+    roElbow.textContent = Math.round(state.elbow) + '°';
+    roGripper.textContent = state.gripperOpen > 0.5 ? 'Open' : 'Closed';
+  }
+
+  function drawScene(){
+    ctx.fillStyle = COLORS.floor;
+    ctx.fillRect(0, 0, cssW, cssH);
+
+    drawTable();
+    pads.forEach(drawPad);
+    blocks.forEach(function(b){ if (!b.held) drawBlockAt(toScreen(b.pos), b.color); });
+
+    var fkr = fk(state.shoulder, state.elbow);
+    var jS = toScreen(fkr.joint), tS = toScreen(fkr.tip);
+
+    ctx.fillStyle = COLORS.surface2;
+    ctx.strokeStyle = COLORS.line;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(baseScreen.x, baseScreen.y, 30, 14, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+    drawLink(baseScreen, jS, COLORS.accent, 14);
+    drawLink(jS, tS, COLORS.accent, 11);
+    drawJoint(baseScreen, 9);
+    drawJoint(jS, 7);
+    drawGripper(jS, tS);
+
+    if (state.heldBlock){ drawBlockAt(tS, state.heldBlock.color); }
+
+    updateReadout();
+    requestAnimationFrame(drawScene);
+  }
+
+  fitCanvas();
+  requestAnimationFrame(drawScene);
+  resetSim();
+  log('Program loaded. Press Run to move the arm.');
 })();
 </script>
-</body>
-</html>
